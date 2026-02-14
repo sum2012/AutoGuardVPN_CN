@@ -106,11 +106,18 @@ class MainViewModel @Inject constructor(
         
         // Force Simplified Chinese
         applyLanguage("zh-CN")
+    }
 
-        // Auto-connect on startup: randomly select a server with ping < 500ms
+    /**
+     * Called when VPN permission is granted or already exists
+     * Only triggers auto-connect if it hasn't been attempted yet
+     */
+    fun onVpnPermissionGranted() {
         viewModelScope.launch {
-            // Wait for server list to be fetched and tested
-            delay(3000)
+            // Wait a bit for server list to be fetched if it's still empty
+            if (serverList.value.isEmpty()) {
+                delay(2000)
+            }
             
             if (!initialConnectionAttempted && _autoConnectEnabled.value) {
                 initialConnectionAttempted = true

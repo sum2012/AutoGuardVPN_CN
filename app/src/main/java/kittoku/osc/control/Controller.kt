@@ -234,7 +234,10 @@ internal class Controller(val bridge: SharedBridge) {
             SSTP_MESSAGE_TYPE_CALL_ABORT
         }
 
-        kill(isReconnectionEnabled) {
+        val isSSLTimeout = received.from == Where.SSL && received.result == Result.ERR_TIMEOUT
+        val isReconnectionRequested = if (isSSLTimeout) false else isReconnectionEnabled
+
+        kill(isReconnectionRequested) {
             sstpClient?.sendLastPacket(lastPacketType)
 
             val header = "${received.from.name}: ${received.result.name}"

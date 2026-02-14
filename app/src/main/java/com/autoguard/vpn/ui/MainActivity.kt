@@ -12,6 +12,7 @@ import android.os.PowerManager
 import android.provider.Settings
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -40,11 +41,17 @@ import dagger.hilt.android.AndroidEntryPoint
 @AndroidEntryPoint
 class MainActivity : AppCompatActivity() {
 
+    private val viewModel: MainViewModel by viewModels()
+
     // VPN permission request Launcher
     private val vpnPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
         // Handle VPN permission result
+        if (result.resultCode == RESULT_OK) {
+            // User confirmed the VPN connection request, notify ViewModel to proceed with auto-connect
+            viewModel.onVpnPermissionGranted()
+        }
     }
 
     // Notification permission request Launcher (Android 13+)
@@ -70,7 +77,6 @@ class MainActivity : AppCompatActivity() {
                     color = MaterialTheme.colorScheme.background
                 ) {
                     val navController = rememberNavController()
-                    val viewModel: MainViewModel = hiltViewModel()
 
                     // Navigation Host
                     NavHost(
@@ -127,6 +133,9 @@ class MainActivity : AppCompatActivity() {
         val intent = VpnService.prepare(this)
         if (intent != null) {
             vpnPermissionLauncher.launch(intent)
+        } else {
+            // Permission already granted
+            viewModel.onVpnPermissionGranted()
         }
 
         // Check notification permission (Android 13+)
@@ -148,6 +157,8 @@ class MainActivity : AppCompatActivity() {
         val intent = VpnService.prepare(this)
         if (intent != null) {
             vpnPermissionLauncher.launch(intent)
+        } else {
+            viewModel.onVpnPermissionGranted()
         }
     }
 }
