@@ -48,7 +48,6 @@ fun SettingsScreen(
 ) {
     val killSwitchEnabled by viewModel.killSwitchEnabled.collectAsState()
     val autoConnectEnabled by viewModel.autoConnectEnabled.collectAsState()
-    val dataSourceType by viewModel.dataSourceType.collectAsState()
     val context = LocalContext.current
     
     Scaffold(
@@ -91,14 +90,6 @@ fun SettingsScreen(
                 subtitle = stringResource(R.string.settings_kill_switch_desc),
                 checked = killSwitchEnabled,
                 onCheckedChange = { viewModel.setKillSwitchEnabled(it) }
-            )
-
-            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
-
-            // Data Source info
-            SettingsInfoItem(
-                title = stringResource(R.string.settings_data_source),
-                value = dataSourceType.name
             )
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
