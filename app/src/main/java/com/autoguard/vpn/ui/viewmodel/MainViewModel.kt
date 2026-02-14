@@ -65,7 +65,7 @@ class MainViewModel @Inject constructor(
     val killSwitchEnabled: StateFlow<Boolean> = _killSwitchEnabled.asStateFlow()
 
     // Auto-connect mode (random server with ping < 500ms)
-    private val _autoConnectEnabled = MutableStateFlow(true)
+    private val _autoConnectEnabled = MutableStateFlow(false)
     val autoConnectEnabled: StateFlow<Boolean> = _autoConnectEnabled.asStateFlow()
 
     // Auto-disconnect timer job
