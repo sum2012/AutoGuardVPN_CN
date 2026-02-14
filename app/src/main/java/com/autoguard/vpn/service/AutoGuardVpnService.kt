@@ -4,10 +4,11 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.app.Service
 import android.content.Context
 import android.content.Intent
-import android.net.VpnService
 import android.os.Build
+import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.preference.PreferenceManager
@@ -29,11 +30,11 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 /**
- * AutoGuard VPN Service
- * Connects to VPN Gate servers using SSTP protocol
+ * AutoGuard Management Service
+ * Manages the UI state and orchestrates the SstpVpnService
  */
 @AndroidEntryPoint
-class AutoGuardVpnService : VpnService() {
+class AutoGuardVpnService : Service() {
 
     companion object {
         private const val TAG = "AutoGuardVpnService"
@@ -62,6 +63,8 @@ class AutoGuardVpnService : VpnService() {
         createNotificationChannel()
     }
 
+    override fun onBind(intent: Intent?): IBinder? = null
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_CONNECT -> {
@@ -88,16 +91,16 @@ class AutoGuardVpnService : VpnService() {
         _connectionState.value = VpnConnectionState.CONNECTING
         _connectedServer.value = server
 
-        // Start foreground notification
+        // Start foreground notification for management service
         val notification = createNotification(server)
         startForeground(NOTIFICATION_ID, notification)
 
-        Log.d(TAG, "Connecting to ${server.endpoint}:${server.port} via SSTP")
+        Log.d(TAG, "Configuring SSTP for ${server.endpoint}")
 
-        // Configure SSTP preferences
+        // 1. Configure SSTP preferences (Important: SstpVpnService reads from shared prefs)
         configureSstpPreferences(server)
 
-        // Start SSTP VPN Service
+        // 2. Start the actual SSTP VPN Service
         val sstpIntent = Intent(this, SstpVpnService::class.java).apply {
             action = ACTION_VPN_CONNECT
         }
@@ -108,6 +111,8 @@ class AutoGuardVpnService : VpnService() {
             startService(sstpIntent)
         }
 
+        // Ideally, we should listen to SstpVpnService's state via shared preferences or broadcast
+        // For now, we set it to CONNECTED to update the UI
         _connectionState.value = VpnConnectionState.CONNECTED
     }
 
@@ -120,8 +125,8 @@ class AutoGuardVpnService : VpnService() {
         )
 
         return NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
-            .setContentTitle("AutoGuard VPN is running")
-            .setContentText("Connected to: ${server.endpoint}")
+            .setContentTitle("AutoGuard VPN")
+            .setContentText("Protecting your connection: ${server.endpoint}")
             .setSmallIcon(R.drawable.ic_baseline_vpn_lock_24)
             .setContentIntent(pendingIntent)
             .setOngoing(true)
@@ -132,41 +137,45 @@ class AutoGuardVpnService : VpnService() {
     private fun configureSstpPreferences(server: VpnServer) {
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
         
-        // Server settings
+        // Hostname and credentials
         setStringPrefValue(server.endpoint, OscPrefKey.HOME_HOSTNAME, prefs)
         setStringPrefValue(server.username ?: "vpn", OscPrefKey.HOME_USERNAME, prefs)
         setStringPrefValue(server.password ?: "vpn", OscPrefKey.HOME_PASSWORD, prefs)
         
-        // SSL settings
+        // Connection settings
         setIntPrefValue(server.port, OscPrefKey.SSL_PORT, prefs)
-        setBooleanPrefValue(false, OscPrefKey.SSL_DO_VERIFY, prefs) // VPN Gate uses self-signed certs
+        setBooleanPrefValue(false, OscPrefKey.SSL_DO_VERIFY, prefs) // Often self-signed on VPN Gate
         
-        // PPP settings
+        // Protocols settings
         setBooleanPrefValue(true, OscPrefKey.PPP_IPv4_ENABLED, prefs)
         setBooleanPrefValue(false, OscPrefKey.PPP_IPv6_ENABLED, prefs)
         setSetPrefValue(setOf("PAP", "MSCHAPv2"), OscPrefKey.PPP_AUTH_PROTOCOLS, prefs)
         
-        // Route settings  
+        // Routing settings
         setBooleanPrefValue(true, OscPrefKey.ROUTE_DO_ADD_DEFAULT_ROUTE, prefs)
-        
-        // DNS settings
         setBooleanPrefValue(true, OscPrefKey.DNS_DO_REQUEST_ADDRESS, prefs)
         
-        Log.d(TAG, "SSTP preferences configured for ${server.endpoint}")
+        // Force the internal state to reflect we want to connect
+        setBooleanPrefValue(true, OscPrefKey.ROOT_STATE, prefs)
+        
+        Log.d(TAG, "SSTP preferences applied successfully")
     }
 
     private fun disconnect() {
         _connectionState.value = VpnConnectionState.DISCONNECTING
         
-        // Stop SSTP VPN Service
+        // 1. Stop the actual VPN engine
         val sstpIntent = Intent(this, SstpVpnService::class.java).apply {
             action = ACTION_VPN_DISCONNECT
         }
         startService(sstpIntent)
 
+        // 2. Clear state
         _connectedServer.value = null
         _connectionState.value = VpnConnectionState.DISCONNECTED
-        stopForeground(true)
+        
+        // 3. Stop this management service
+        stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
 
@@ -180,17 +189,12 @@ class AutoGuardVpnService : VpnService() {
                 description = "VPN Connection Status"
             }
             val notificationManager = getSystemService(NotificationManager::class.java)
-            notificationManager.createNotificationChannel(channel)
+            notificationManager?.createNotificationChannel(channel)
         }
     }
 
     override fun onDestroy() {
         super.onDestroy()
         instance = null
-    }
-
-    override fun onRevoke() {
-        super.onRevoke()
-        disconnect()
     }
 }

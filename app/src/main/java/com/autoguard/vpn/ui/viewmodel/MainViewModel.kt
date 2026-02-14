@@ -17,11 +17,14 @@ import com.autoguard.vpn.data.repository.ServerRepository
 import com.autoguard.vpn.data.repository.VpnGateStats
 import com.autoguard.vpn.service.AutoGuardVpnService
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+import kotlin.random.Random
 
 /**
  * Main Interface ViewModel
@@ -84,12 +87,36 @@ class MainViewModel @Inject constructor(
     private val _killSwitchEnabled = MutableStateFlow(false)
     val killSwitchEnabled: StateFlow<Boolean> = _killSwitchEnabled.asStateFlow()
 
+    // Auto-connect mode (random server with ping < 500ms)
+    private val _autoConnectEnabled = MutableStateFlow(true)
+    val autoConnectEnabled: StateFlow<Boolean> = _autoConnectEnabled.asStateFlow()
+
+    // Auto-disconnect timer job
+    private var autoDisconnectJob: Job? = null
+
+    // Connection start time for timeout tracking
+    private var connectionStartTime: Long = 0
+
+    // Flag to track if initial connection has been attempted
+    private var initialConnectionAttempted = false
+
     init {
         // Automatically fetch server list and test connectivity on startup
         fetchServers()
         
         // Force Simplified Chinese
         applyLanguage("zh-CN")
+
+        // Auto-connect on startup: randomly select a server with ping < 500ms
+        viewModelScope.launch {
+            // Wait for server list to be fetched and tested
+            delay(3000)
+            
+            if (!initialConnectionAttempted && _autoConnectEnabled.value) {
+                initialConnectionAttempted = true
+                quickConnect()
+            }
+        }
     }
 
     private fun applyLanguage(languageCode: String) {
@@ -171,40 +198,21 @@ class MainViewModel @Inject constructor(
                 disconnect()
             }
             VpnConnectionState.DISCONNECTED -> {
-                val server = _selectedServer.value ?: serverList.value.firstOrNull()
-                if (server != null) {
-                    connect(server)
+                // If auto-connect is enabled, use quick connect
+                if (_autoConnectEnabled.value) {
+                    quickConnect()
                 } else {
-                    // Show error if no server available
+                    // Original behavior: use selected server or first available
+                    val server = _selectedServer.value ?: serverList.value.firstOrNull()
+                    if (server != null) {
+                        connect(server)
+                    }
                 }
             }
             else -> {
                 // Connecting or disconnecting, do nothing
             }
         }
-    }
-
-    /**
-     * Connect to VPN
-     */
-    private fun connect(server: VpnServer) {
-        val context = getApplication<Application>()
-        val intent = Intent(context, AutoGuardVpnService::class.java).apply {
-            action = AutoGuardVpnService.ACTION_CONNECT
-            putExtra(AutoGuardVpnService.EXTRA_SERVER, server)
-        }
-        context.startForegroundService(intent)
-    }
-
-    /**
-     * Disconnect from VPN
-     */
-    private fun disconnect() {
-        val context = getApplication<Application>()
-        val intent = Intent(context, AutoGuardVpnService::class.java).apply {
-            action = AutoGuardVpnService.ACTION_DISCONNECT
-        }
-        context.startService(intent)
     }
 
     /**
@@ -293,5 +301,182 @@ class MainViewModel @Inject constructor(
      */
     fun clearError() {
         // Error is managed by the repository
+    }
+
+    /**
+     * Toggle auto-connect mode
+     * When enabled, automatically selects a random server with ping < 500ms and connects
+     */
+    fun toggleAutoConnect() {
+        _autoConnectEnabled.value = !_autoConnectEnabled.value
+    }
+
+    /**
+     * Set auto-connect mode
+     */
+    fun setAutoConnectEnabled(enabled: Boolean) {
+        _autoConnectEnabled.value = enabled
+    }
+
+    /**
+     * Get servers with ping less than 500ms
+     */
+    fun getServersWithLowLatency(): List<VpnServer> {
+        return serverList.value.filter { server ->
+            server.pingLatency in 1..500
+        }
+    }
+
+    /**
+     * Select a random server from servers with ping < 500ms
+     */
+    fun getRandomLowLatencyServer(): VpnServer? {
+        val lowLatencyServers = getServersWithLowLatency()
+        return if (lowLatencyServers.isNotEmpty()) {
+            lowLatencyServers[Random.nextInt(lowLatencyServers.size)]
+        } else {
+            null
+        }
+    }
+
+    /**
+     * Auto-connect to a random server with ping < 500ms within 500ms timeout
+     */
+    fun autoConnect() {
+        viewModelScope.launch {
+            // First, ensure we have server list
+            if (serverList.value.isEmpty()) {
+                fetchServers()
+                // Wait a bit for servers to be fetched
+                delay(2000)
+            }
+
+            // Try to find a server with ping < 500ms
+            var selectedServer = getRandomLowLatencyServer()
+
+            // If no server with ping < 500ms, try to test all servers first
+            if (selectedServer == null) {
+                testAllServers()
+                delay(1000) // Wait for tests to complete
+                selectedServer = getRandomLowLatencyServer()
+            }
+
+            // If still no suitable server, use any available server
+            if (selectedServer == null) {
+                selectedServer = serverList.value.firstOrNull { it.pingLatency > 0 }
+            }
+
+            // If still no server, use first available
+            if (selectedServer == null) {
+                selectedServer = serverList.value.firstOrNull()
+            }
+
+            if (selectedServer != null) {
+                _selectedServer.value = selectedServer
+                connect(selectedServer)
+            }
+        }
+    }
+
+    /**
+     * Start auto-disconnect timer
+     * Disconnects after specified milliseconds (default: 5 minutes)
+     */
+    fun startAutoDisconnect(delayMs: Long = 5 * 60 * 1000) {
+        autoDisconnectJob?.cancel()
+        autoDisconnectJob = viewModelScope.launch {
+            delay(delayMs)
+            disconnect()
+        }
+    }
+
+    /**
+     * Cancel auto-disconnect timer
+     */
+    fun cancelAutoDisconnect() {
+        autoDisconnectJob?.cancel()
+        autoDisconnectJob = null
+    }
+
+    /**
+     * Connect to VPN with auto-disconnect option
+     */
+    private fun connect(server: VpnServer, autoDisconnect: Boolean = false) {
+        connectionStartTime = System.currentTimeMillis()
+        
+        val context = getApplication<Application>()
+        val intent = Intent(context, AutoGuardVpnService::class.java).apply {
+            action = AutoGuardVpnService.ACTION_CONNECT
+            putExtra(AutoGuardVpnService.EXTRA_SERVER, server)
+        }
+        context.startForegroundService(intent)
+
+        // If auto-disconnect is enabled, schedule disconnect after 5 minutes
+        if (autoDisconnect) {
+            startAutoDisconnect()
+        }
+    }
+
+    /**
+     * Disconnect from VPN
+     */
+    private fun disconnect() {
+        cancelAutoDisconnect()
+        
+        val context = getApplication<Application>()
+        val intent = Intent(context, AutoGuardVpnService::class.java).apply {
+            action = AutoGuardVpnService.ACTION_DISCONNECT
+        }
+        context.startService(intent)
+    }
+
+    /**
+     * Quick connect - random server with ping < 500ms
+     * This is the main function for quick connection
+     */
+    fun quickConnect() {
+        viewModelScope.launch {
+            // Ensure we have fresh server list
+            if (serverList.value.isEmpty()) {
+                fetchServers()
+                delay(2000)
+            }
+
+            // Get random low latency server
+            var selectedServer = getRandomLowLatencyServer()
+
+            // If no suitable server, test connectivity first
+            if (selectedServer == null) {
+                testAllServers()
+                delay(1500)
+                selectedServer = getRandomLowLatencyServer()
+            }
+
+            // Fallback to best server if still no low latency server
+            if (selectedServer == null) {
+                selectedServer = getBestServer()
+            }
+
+            // Final fallback
+            if (selectedServer == null) {
+                selectedServer = serverList.value.firstOrNull()
+            }
+
+            selectedServer?.let { server ->
+                _selectedServer.value = server
+                connect(server)
+            }
+        }
+    }
+
+    /**
+     * Update VPN list from API
+     */
+    fun updateVpnList() {
+        viewModelScope.launch {
+            serverRepository.fetchServerList().onSuccess {
+                testAllServers()
+            }
+        }
     }
 }

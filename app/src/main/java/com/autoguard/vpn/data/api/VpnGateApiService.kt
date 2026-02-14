@@ -29,10 +29,10 @@ interface VpnGateApiService {
     suspend fun getDefaultServerList(): ResponseBody
 
     companion object {
-        // VPN Gate official API endpoint (Using HTTPS to comply with modern Android network security policies)
+        // VPN Gate official API endpoint (Using HTTPS)
         const val DEFAULT_API_URL = "https://www.vpngate.net/api/iphone/"
 
-        // HTTPS backup endpoint
+        // HTTPS endpoint
         const val HTTPS_API_URL = "https://www.vpngate.net/api/iphone/"
 
         // HTTP backup endpoint (If HTTPS is unavailable, must be allowed in networkSecurityConfig)

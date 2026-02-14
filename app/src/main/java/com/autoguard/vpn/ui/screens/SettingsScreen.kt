@@ -97,7 +97,7 @@ fun SettingsScreen(
 
             SettingsInfoItem(
                 title = stringResource(R.string.settings_version),
-                value = "1.0.1"
+                value = "1.0.0"
             )
 
             HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
@@ -106,7 +106,7 @@ fun SettingsScreen(
                 title = stringResource(R.string.settings_source),
                 value = "GitHub",
                 onClick = {
-                    val intent = Intent(Intent.ACTION_VIEW, "https://github.com/sum2012/AutoGuardVPN".toUri())
+                    val intent = Intent(Intent.ACTION_VIEW, "https://github.com/sum2012/AutoGuardVPN_CN".toUri())
                     context.startActivity(intent)
                 }
             )
