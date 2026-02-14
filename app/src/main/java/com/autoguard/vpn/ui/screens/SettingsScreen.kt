@@ -47,6 +47,7 @@ fun SettingsScreen(
     onNavigateBack: () -> Unit
 ) {
     val killSwitchEnabled by viewModel.killSwitchEnabled.collectAsState()
+    val autoConnectEnabled by viewModel.autoConnectEnabled.collectAsState()
     val dataSourceType by viewModel.dataSourceType.collectAsState()
     val context = LocalContext.current
     
@@ -73,6 +74,16 @@ fun SettingsScreen(
         ) {
             // VPN Settings Category
             CategoryHeader(text = stringResource(R.string.settings_connection))
+
+            // Auto Connect
+            SettingsSwitchItem(
+                title = stringResource(R.string.settings_auto_connect),
+                subtitle = stringResource(R.string.settings_auto_connect_desc),
+                checked = autoConnectEnabled,
+                onCheckedChange = { viewModel.setAutoConnectEnabled(it) }
+            )
+
+            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
 
             // Kill Switch
             SettingsSwitchItem(

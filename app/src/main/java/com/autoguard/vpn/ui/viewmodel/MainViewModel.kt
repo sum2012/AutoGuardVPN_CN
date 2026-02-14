@@ -179,6 +179,7 @@ class MainViewModel @Inject constructor(
      */
     fun selectServer(server: VpnServer) {
         _selectedServer.value = server
+        _autoConnectEnabled.value = false // Disable auto-connect when user manually selects a server
         _showServerSelector.value = false
     }
 
@@ -205,14 +206,17 @@ class MainViewModel @Inject constructor(
                 disconnect()
             }
             VpnConnectionState.DISCONNECTED -> {
-                // If auto-connect is enabled, use quick connect
+                // If auto-connect is enabled and no specific server selected, or auto-connect is preferred
                 if (_autoConnectEnabled.value) {
                     quickConnect()
                 } else {
-                    // Original behavior: use selected server or first available
+                    // Use selected server or first available
                     val server = _selectedServer.value ?: serverList.value.firstOrNull()
                     if (server != null) {
                         connect(server)
+                    } else {
+                        // If no server selected and list is empty, try to fetch and quick connect
+                        quickConnect()
                     }
                 }
             }

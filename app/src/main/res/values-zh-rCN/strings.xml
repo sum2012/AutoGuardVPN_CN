@@ -32,6 +32,8 @@
     <string name="settings_connection">连接设置</string>
     <string name="settings_kill_switch">断网保护</string>
     <string name="settings_kill_switch_desc">当 VPN 断开时自动阻止网络访问</string>
+    <string name="settings_auto_connect">自动连接</string>
+    <string name="settings_auto_connect_desc">自动选择最佳服务器进行连接。手动选择时将禁用。</string>
     <string name="settings_appearance">外观</string>
     <string name="settings_dark_mode">深色模式</string>
     <string name="settings_dark_mode_desc">使用深色主题</string>

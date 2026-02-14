@@ -32,6 +32,8 @@
     <string name="settings_connection">Connection Settings</string>
     <string name="settings_kill_switch">Kill Switch</string>
     <string name="settings_kill_switch_desc">Automatically block network access when VPN is disconnected</string>
+    <string name="settings_auto_connect">Auto Connect</string>
+    <string name="settings_auto_connect_desc">Automatically select the best server for connection. Disabled when selecting manually.</string>
     <string name="settings_appearance">Appearance</string>
     <string name="settings_dark_mode">Dark Mode</string>
     <string name="settings_dark_mode_desc">Use dark theme</string>
@@ -74,6 +76,5 @@
     <string name="language_select_title">Select Language</string>
     <string name="language_english">English</string>
     <string name="language_chinese_simplified">简体中文</string>
-    <string name="language_chinese_traditional">繁體中文</string>
     <string name="language_confirm">Confirm</string>
 </resources>

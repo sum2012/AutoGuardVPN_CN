@@ -235,6 +235,7 @@ internal class Controller(val bridge: SharedBridge) {
         }
 
         val isSSLTimeout = received.from == Where.SSL && received.result == Result.ERR_TIMEOUT
+        // Optimization: immediately disable reconnection if SSL Timeout occurs
         val isReconnectionRequested = if (isSSLTimeout) false else isReconnectionEnabled
 
         kill(isReconnectionRequested) {

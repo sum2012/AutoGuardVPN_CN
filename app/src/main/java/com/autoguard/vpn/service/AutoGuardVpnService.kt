@@ -7,6 +7,7 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.SharedPreferences
 import android.os.Build
 import android.os.IBinder
 import android.util.Log
@@ -18,6 +19,7 @@ import com.autoguard.vpn.data.model.VpnServer
 import com.autoguard.vpn.ui.MainActivity
 import dagger.hilt.android.AndroidEntryPoint
 import kittoku.osc.preference.OscPrefKey
+import kittoku.osc.preference.accessor.getBooleanPrefValue
 import kittoku.osc.preference.accessor.setBooleanPrefValue
 import kittoku.osc.preference.accessor.setIntPrefValue
 import kittoku.osc.preference.accessor.setSetPrefValue
@@ -35,6 +37,19 @@ import kotlinx.coroutines.flow.asStateFlow
  */
 @AndroidEntryPoint
 class AutoGuardVpnService : Service() {
+
+    private lateinit var prefs: SharedPreferences
+    private val preferenceListener = SharedPreferences.OnSharedPreferenceChangeListener { sharedPrefs, key ->
+        if (key == OscPrefKey.ROOT_STATE.name) {
+            val isRootActive = getBooleanPrefValue(OscPrefKey.ROOT_STATE, sharedPrefs)
+            Log.d(TAG, "ROOT_STATE changed: $isRootActive")
+            // If the underlying VPN engine stops, we should update our state
+            if (!isRootActive && _connectionState.value != VpnConnectionState.DISCONNECTED) {
+                Log.d(TAG, "Detection of VPN engine stop, disconnecting management service")
+                disconnect()
+            }
+        }
+    }
 
     companion object {
         private const val TAG = "AutoGuardVpnService"
@@ -61,6 +76,9 @@ class AutoGuardVpnService : Service() {
         super.onCreate()
         instance = this
         createNotificationChannel()
+        
+        prefs = PreferenceManager.getDefaultSharedPreferences(this)
+        prefs.registerOnSharedPreferenceChangeListener(preferenceListener)
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -111,8 +129,8 @@ class AutoGuardVpnService : Service() {
             startService(sstpIntent)
         }
 
-        // Ideally, we should listen to SstpVpnService's state via shared preferences or broadcast
-        // For now, we set it to CONNECTED to update the UI
+        // We set it to CONNECTED to update the UI
+        // In a more robust implementation, we would wait for a success signal from SstpVpnService
         _connectionState.value = VpnConnectionState.CONNECTED
     }
 
@@ -135,8 +153,6 @@ class AutoGuardVpnService : Service() {
     }
 
     private fun configureSstpPreferences(server: VpnServer) {
-        val prefs = PreferenceManager.getDefaultSharedPreferences(this)
-        
         // Hostname and credentials
         setStringPrefValue(server.endpoint, OscPrefKey.HOME_HOSTNAME, prefs)
         setStringPrefValue(server.username ?: "vpn", OscPrefKey.HOME_USERNAME, prefs)
@@ -162,6 +178,8 @@ class AutoGuardVpnService : Service() {
     }
 
     private fun disconnect() {
+        if (_connectionState.value == VpnConnectionState.DISCONNECTED) return
+        
         _connectionState.value = VpnConnectionState.DISCONNECTING
         
         // 1. Stop the actual VPN engine
@@ -195,6 +213,7 @@ class AutoGuardVpnService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
+        prefs.unregisterOnSharedPreferenceChangeListener(preferenceListener)
         instance = null
     }
 }
